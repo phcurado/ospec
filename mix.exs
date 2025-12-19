@@ -19,7 +19,12 @@ defmodule ZoiRPC.MixProject do
 
   defp deps do
     [
-      {:zoi, "~> 0.12"}
+      {:zoi, "~> 0.13"},
+      {:decimal, "~> 2.0", optional: true},
+      {:excoveralls, "~> 0.18", only: :test},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:ex_doc, "~> 0.38", only: :dev, runtime: false, warn_if_outdated: true}
     ]
   end
 end
