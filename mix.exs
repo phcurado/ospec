@@ -6,6 +6,7 @@ defmodule ZoiRPC.MixProject do
       app: :zoi_rpc,
       version: "0.1.0",
       elixir: "~> 1.19",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       test_coverage: [tool: ExCoveralls],
@@ -14,6 +15,9 @@ defmodule ZoiRPC.MixProject do
       ]
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   def cli do
     [
@@ -36,6 +40,9 @@ defmodule ZoiRPC.MixProject do
   defp deps do
     [
       {:zoi, github: "phcurado/zoi"},
+      {:plug, "~> 1.19"},
+      {:jason, "~> 1.4"},
+      {:req, "~> 0.5", optional: true},
       {:excoveralls, "~> 0.18", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},

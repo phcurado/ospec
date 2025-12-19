@@ -94,7 +94,7 @@ defmodule Zoi.RPCTest do
   end
 
   describe "Zoi.RPC.output/2" do
-    test "sets output schema" do
+    test "sets object output schema" do
       output_schema = Zoi.object(%{id: Zoi.integer(), name: Zoi.string()})
 
       rpc_schema =
@@ -104,11 +104,15 @@ defmodule Zoi.RPCTest do
       assert rpc_schema.output == output_schema
     end
 
-    test "raises error for invalid output schema" do
-      assert_raise Zoi.ParseError, fn ->
+    test "sets array output schema" do
+      user_schema = Zoi.object(%{id: Zoi.integer(), name: Zoi.string()})
+      output_schema = Zoi.array(user_schema)
+
+      rpc_schema =
         new()
-        |> output("not a schema")
-      end
+        |> output(output_schema)
+
+      assert rpc_schema.output == output_schema
     end
   end
 

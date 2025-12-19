@@ -28,47 +28,50 @@ defmodule Zoi.RPC do
   Contracts define the API schema without implementation. They can be shared as a
   separate package between server and client applications.
 
+  Define contracts in a `contracts/0` function that returns a map:
+
+  **Important:** HTTP params have string keys. Use `coerce: true` on `Zoi.object` schemas
+  to normalize string keys to atoms for matching.
+
       # In a shared package: my_api_contract
       defmodule MyAPI.Contract do
+        # Output schemas don't need coerce since they use atom keys from Elixir data
         @user Zoi.object(%{
           id: Zoi.integer(),
           name: Zoi.string(),
           email: Zoi.string()
         })
 
-        def user_schema, do: @user
+        def contracts do
+          %{
+            list_users:
+              Zoi.RPC.new()
+              |> Zoi.RPC.route(method: :get, path: "/users")
+              |> Zoi.RPC.input(
+                query: Zoi.object(%{
+                  page: Zoi.integer() |> Zoi.default(1),
+                  page_size: Zoi.integer() |> Zoi.default(20)
+                }, coerce: true)
+              )
+              |> Zoi.RPC.output(Zoi.array(@user)),
 
-        def list_users do
-          Zoi.RPC.new()
-          |> Zoi.RPC.route(method: :get, path: "/users")
-          |> Zoi.RPC.input(
-            query: Zoi.object(%{
-              page: Zoi.integer() |> Zoi.default(1),
-              page_size: Zoi.integer() |> Zoi.default(20)
-            })
-          )
-          |> Zoi.RPC.output(Zoi.array(@user))
-        end
+            find_user:
+              Zoi.RPC.new()
+              |> Zoi.RPC.route(method: :get, path: "/users/:id")
+              |> Zoi.RPC.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
+              |> Zoi.RPC.output(@user),
 
-        def find_user do
-          Zoi.RPC.new()
-          |> Zoi.RPC.route(method: :get, path: "/users/:id")
-          |> Zoi.RPC.input(
-            params: Zoi.object(%{id: Zoi.integer()})
-          )
-          |> Zoi.RPC.output(@user)
-        end
-
-        def create_user do
-          Zoi.RPC.new()
-          |> Zoi.RPC.route(method: :post, path: "/users")
-          |> Zoi.RPC.input(
-            body: Zoi.object(%{
-              name: Zoi.string(),
-              email: Zoi.string()
-            })
-          )
-          |> Zoi.RPC.output(@user)
+            create_user:
+              Zoi.RPC.new()
+              |> Zoi.RPC.route(method: :post, path: "/users")
+              |> Zoi.RPC.input(
+                body: Zoi.object(%{
+                  name: Zoi.string(),
+                  email: Zoi.string()
+                }, coerce: true)
+              )
+              |> Zoi.RPC.output(@user)
+          }
         end
       end
 
@@ -82,46 +85,46 @@ defmodule Zoi.RPC do
 
   ## Server
 
-  The server adds handlers to the contracts. Handlers are anonymous functions that
-  receive the validated input and the `Plug.Conn`, allowing you to call your existing
-  business logic.
+  Use `Zoi.RPC.Handler` in your Phoenix controllers. It validates input,
+  calls your handler, validates output, and returns JSON responses.
 
-      defmodule MyApp.API do
-        def routes do
-          %{
-            users: %{
-              list: MyAPI.Contract.list_users()
-                    |> Zoi.RPC.handler(fn input, conn ->
-                      users = MyApp.Users.list(input.page, input.page_size)
-                      {:ok, users}
-                    end),
+      defmodule MyAppWeb.UsersController do
+        use MyAppWeb, :controller
+        import Zoi.RPC.Handler
 
-              find: MyAPI.Contract.find_user()
-                    |> Zoi.RPC.handler(fn input, conn ->
-                      case MyApp.Users.get(input.id) do
-                        nil -> {:error, :not_found}
-                        user -> {:ok, user}
-                      end
-                    end),
+        @contracts MyAPI.Contract.contracts()
 
-              create: MyAPI.Contract.create_user()
-                      |> Zoi.RPC.handler(fn input, conn ->
-                        current_user = conn.assigns.current_user
+        def list(conn, params) do
+          handle(conn, params, @contracts.list_users, fn input, _conn ->
+            users = MyApp.Users.list(input.page, input.page_size)
+            {:ok, users}
+          end)
+        end
 
-                        case MyApp.Users.create(input, created_by: current_user) do
-                          {:ok, user} -> {:ok, user}
-                          {:error, changeset} -> {:error, changeset}
-                        end
-                      end)
-            }
-          }
+        def find(conn, params) do
+          handle(conn, params, @contracts.find_user, fn input, _conn ->
+            case MyApp.Users.get(input.id) do
+              nil -> {:error, :not_found}
+              user -> {:ok, user}
+            end
+          end)
+        end
+
+        def create(conn, params) do
+          handle(conn, params, @contracts.create_user, fn input, conn ->
+            current_user = conn.assigns.current_user
+
+            case MyApp.Users.create(input, created_by: current_user) do
+              {:ok, user} -> {:ok, user}
+              {:error, changeset} -> {:error, changeset}
+            end
+          end)
         end
       end
 
-  ### Plug Integration
+  ### Phoenix Router
 
-  Add `Zoi.RPC.Plug` to your Phoenix router. It integrates with existing pipelines,
-  so authentication and other middleware work as expected:
+  Add routes in your Phoenix router pointing to the controller:
 
       # In your Phoenix router
       pipeline :api do
@@ -129,30 +132,39 @@ defmodule Zoi.RPC do
         plug MyApp.AuthPlug  # Sets conn.assigns.current_user
       end
 
-      scope "/api" do
+      scope "/api", MyAppWeb do
         pipe_through :api
-        forward "/", Zoi.RPC.Plug, routes: &MyApp.API.routes/0
+
+        get "/users", UsersController, :list
+        get "/users/:id", UsersController, :find
+        post "/users", UsersController, :create
       end
 
-  The handler receives `conn` with all assigns populated by previous plugs.
+  This leverages Phoenix's battle-tested routing while Zoi.RPC handles validation.
 
   ## Client
 
   The client uses the same contract for type-safe requests. It validates input before
-  sending and validates output on response.
+  sending and validates output on response. Requires `{:req, "~> 0.5"}` in your dependencies.
 
-      # In your client application (depends on my_api_contract)
-      defmodule MyApp.Client do
+      defmodule MyApp.APIClient do
         use Zoi.RPC.Client,
-          base_url: "http://localhost:4000",
-          contract: MyAPI.Contract
+          base_url: "http://localhost:4000/api",
+          headers: %{"authorization" => "Bearer token"},
+          contracts: MyAPI.Contract.contracts()
       end
 
-  Call API methods with validated inputs and outputs:
+      # Auto-generates functions from contracts:
+      {:ok, users} = MyApp.APIClient.list_users(%{page: 1})
+      {:ok, user} = MyApp.APIClient.find_user(%{id: 123})
+      user = MyApp.APIClient.find_user!(%{id: 123})  # raises on error
 
-      {:ok, users} = MyApp.Client.users_list(%{page: 1, page_size: 10})
-      {:ok, user} = MyApp.Client.users_find(%{id: 123})
-      {:ok, new_user} = MyApp.Client.users_create(%{name: "Alice", email: "alice@example.com"})
+  The client handles:
+  - Input validation against the contract's input schema
+  - URL building from route and path params
+  - Query params and JSON body serialization
+  - Output validation against the contract's output schema
+  - Error responses with `ValidationError`, `RequestError`, or `ServerError`
 
   ## Architecture
 
@@ -174,14 +186,12 @@ defmodule Zoi.RPC do
                   body: Zoi.struct(Zoi.Types.Object) |> Zoi.optional()
                 )
 
-  @output_schema Zoi.struct(Zoi.Types.Object)
-
   @handler_schema Zoi.function(arity: 2)
 
   @schema Zoi.struct(__MODULE__, %{
             route: @route_schema,
             input: @input_schema |> Zoi.optional(),
-            output: @output_schema |> Zoi.optional(),
+            output: Zoi.any() |> Zoi.optional(),
             handler: @handler_schema |> Zoi.optional()
           })
 
@@ -224,10 +234,11 @@ defmodule Zoi.RPC do
 
   @doc """
   Sets the output schema for the endpoint.
+
+  Accepts any Zoi schema type (object, array, string, etc.).
   """
-  @spec output(t(), unquote(Zoi.type_spec(@output_schema))) :: t()
+  @spec output(t(), Zoi.type()) :: t()
   def output(rpc, output) do
-    Zoi.parse!(@output_schema, output)
     %{rpc | output: output}
   end
 
