@@ -1,6 +1,6 @@
-defmodule Zoi.RPC.Handler do
+defmodule Ospec.Handler do
   @moduledoc """
-  Handles Zoi.RPC requests with input validation, handler execution, and output validation.
+  Handles Ospec requests with input validation, handler execution, and output validation.
 
   ## Usage
 
@@ -8,7 +8,7 @@ defmodule Zoi.RPC.Handler do
 
       defmodule MyAppWeb.UsersController do
         use MyAppWeb, :controller
-        import Zoi.RPC.Handler
+        import Ospec.Handler
 
         @contracts MyAPI.Contract.contracts()
 
@@ -52,7 +52,7 @@ defmodule Zoi.RPC.Handler do
 
   - `conn` - The Plug.Conn
   - `params` - Phoenix params (merged path params, query params, body)
-  - `contract` - The Zoi.RPC contract (without handler)
+  - `contract` - The Ospec contract (without handler)
   - `handler` - Function `(input, conn) -> {:ok, result} | {:error, reason}`
   """
   def handle(conn, params, contract, handler) do

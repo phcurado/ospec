@@ -1,31 +1,31 @@
-defmodule Zoi.RPC.HandlerTest do
+defmodule Ospec.HandlerTest do
   use ExUnit.Case, async: true
   import Plug.Test
 
-  import Zoi.RPC.Handler
+  import Ospec.Handler
 
   # HTTP params have string keys, so we need coerce: true for key normalization
   @user_schema Zoi.object(%{id: Zoi.integer(), name: Zoi.string()}, coerce: true)
 
   defp list_users_contract do
-    Zoi.RPC.new()
-    |> Zoi.RPC.route(method: :get, path: "/users")
-    |> Zoi.RPC.input(query: Zoi.object(%{page: Zoi.integer() |> Zoi.default(1)}, coerce: true))
-    |> Zoi.RPC.output(Zoi.array(@user_schema))
+    Ospec.new()
+    |> Ospec.route(method: :get, path: "/users")
+    |> Ospec.input(query: Zoi.object(%{page: Zoi.integer() |> Zoi.default(1)}, coerce: true))
+    |> Ospec.output(Zoi.array(@user_schema))
   end
 
   defp find_user_contract do
-    Zoi.RPC.new()
-    |> Zoi.RPC.route(method: :get, path: "/users/:id")
-    |> Zoi.RPC.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
-    |> Zoi.RPC.output(@user_schema)
+    Ospec.new()
+    |> Ospec.route(method: :get, path: "/users/:id")
+    |> Ospec.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
+    |> Ospec.output(@user_schema)
   end
 
   defp create_user_contract do
-    Zoi.RPC.new()
-    |> Zoi.RPC.route(method: :post, path: "/users")
-    |> Zoi.RPC.input(body: Zoi.object(%{name: Zoi.string()}, coerce: true))
-    |> Zoi.RPC.output(@user_schema)
+    Ospec.new()
+    |> Ospec.route(method: :post, path: "/users")
+    |> Ospec.input(body: Zoi.object(%{name: Zoi.string()}, coerce: true))
+    |> Ospec.output(@user_schema)
   end
 
   describe "handle/4" do

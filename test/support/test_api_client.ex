@@ -1,8 +1,8 @@
-defmodule Zoi.RPC.TestAPIClient do
+defmodule Ospec.TestAPIClient do
   @moduledoc false
 
-  use Zoi.RPC.Client,
+  use Ospec.Client,
     base_url: "http://localhost:4000/api",
     headers: %{"x-test" => "true"},
-    contracts: Zoi.RPC.TestContract.contracts()
+    contracts: Ospec.TestContract.contracts()
 end

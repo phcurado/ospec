@@ -158,8 +158,7 @@ defmodule Ospec do
 
       defmodule UserAppWeb.Router do
         use UserAppWeb, :router
-
-        import Ospec.Router, contracts: UserAPI.api_spec(),
+        use Ospec.Router, contracts: UserAPI.api_spec(),
 
         pipeline :api do
           plug :accepts, ["json"]

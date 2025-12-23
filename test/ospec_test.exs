@@ -1,12 +1,12 @@
-defmodule Zoi.RPCTest do
+defmodule OspecTest do
   use ExUnit.Case
-  doctest Zoi.RPC
+  doctest Ospec
 
-  import Zoi.RPC
+  import Ospec
 
-  describe "Zoi.RPC.new/0" do
+  describe "Ospec.new/0" do
     test "creates a new RPC schema" do
-      assert %Zoi.RPC{
+      assert %Ospec{
                route: %{method: :get, path: "/"},
                input: nil,
                output: nil,
@@ -15,7 +15,7 @@ defmodule Zoi.RPCTest do
     end
   end
 
-  describe "Zoi.RPC.route/2" do
+  describe "Ospec.route/2" do
     test "sets the route method and path" do
       rpc_schema =
         new()
@@ -40,7 +40,7 @@ defmodule Zoi.RPCTest do
     end
   end
 
-  describe "Zoi.RPC.input/2" do
+  describe "Ospec.input/2" do
     test "sets input with query schema" do
       query_schema = Zoi.object(%{page: Zoi.integer()})
 
@@ -93,7 +93,7 @@ defmodule Zoi.RPCTest do
     end
   end
 
-  describe "Zoi.RPC.output/2" do
+  describe "Ospec.output/2" do
     test "sets object output schema" do
       output_schema = Zoi.object(%{id: Zoi.integer(), name: Zoi.string()})
 
@@ -116,7 +116,7 @@ defmodule Zoi.RPCTest do
     end
   end
 
-  describe "Zoi.RPC.handler/2" do
+  describe "Ospec.handler/2" do
     test "sets handler function" do
       handler_fn = fn _input, _conn -> {:ok, %{}} end
 

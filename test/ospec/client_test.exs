@@ -1,7 +1,7 @@
-defmodule Zoi.RPC.ClientTest do
+defmodule Ospec.ClientTest do
   use ExUnit.Case, async: true
 
-  alias Zoi.RPC.Client
+  alias Ospec.Client
 
   # Use Req.Test verification
   setup :verify_on_exit!
@@ -51,24 +51,24 @@ defmodule Zoi.RPC.ClientTest do
     @user_schema Zoi.object(%{id: Zoi.integer(), name: Zoi.string()}, coerce: true)
 
     defp find_user_contract do
-      Zoi.RPC.new()
-      |> Zoi.RPC.route(method: :get, path: "/users/:id")
-      |> Zoi.RPC.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
-      |> Zoi.RPC.output(@user_schema)
+      Ospec.new()
+      |> Ospec.route(method: :get, path: "/users/:id")
+      |> Ospec.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
+      |> Ospec.output(@user_schema)
     end
 
     defp create_user_contract do
-      Zoi.RPC.new()
-      |> Zoi.RPC.route(method: :post, path: "/users")
-      |> Zoi.RPC.input(body: Zoi.object(%{name: Zoi.string()}, coerce: true))
-      |> Zoi.RPC.output(@user_schema)
+      Ospec.new()
+      |> Ospec.route(method: :post, path: "/users")
+      |> Ospec.input(body: Zoi.object(%{name: Zoi.string()}, coerce: true))
+      |> Ospec.output(@user_schema)
     end
 
     defp list_users_contract do
-      Zoi.RPC.new()
-      |> Zoi.RPC.route(method: :get, path: "/users")
-      |> Zoi.RPC.input(query: Zoi.object(%{page: Zoi.integer() |> Zoi.default(1)}, coerce: true))
-      |> Zoi.RPC.output(Zoi.array(@user_schema))
+      Ospec.new()
+      |> Ospec.route(method: :get, path: "/users")
+      |> Ospec.input(query: Zoi.object(%{page: Zoi.integer() |> Zoi.default(1)}, coerce: true))
+      |> Ospec.output(Zoi.array(@user_schema))
     end
 
     test "successful GET request with path params" do
@@ -306,9 +306,9 @@ defmodule Zoi.RPC.ClientTest do
       end)
 
       contract =
-        Zoi.RPC.new()
-        |> Zoi.RPC.route(method: :get, path: "/users")
-        |> Zoi.RPC.output(Zoi.array(Zoi.object(%{}, coerce: true)))
+        Ospec.new()
+        |> Ospec.route(method: :get, path: "/users")
+        |> Ospec.output(Zoi.array(Zoi.object(%{}, coerce: true)))
 
       client =
         Client.new(base_url: "http://localhost:4000", req_options: [plug: {Req.Test, __MODULE__}])
@@ -318,10 +318,10 @@ defmodule Zoi.RPC.ClientTest do
 
     test "raises ValidationError on invalid input" do
       contract =
-        Zoi.RPC.new()
-        |> Zoi.RPC.route(method: :get, path: "/users/:id")
-        |> Zoi.RPC.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
-        |> Zoi.RPC.output(Zoi.object(%{}, coerce: true))
+        Ospec.new()
+        |> Ospec.route(method: :get, path: "/users/:id")
+        |> Ospec.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
+        |> Ospec.output(Zoi.object(%{}, coerce: true))
 
       client =
         Client.new(base_url: "http://localhost:4000", req_options: [plug: {Req.Test, __MODULE__}])
@@ -342,9 +342,9 @@ defmodule Zoi.RPC.ClientTest do
       end)
 
       contract =
-        Zoi.RPC.new()
-        |> Zoi.RPC.route(method: :get, path: "/users")
-        |> Zoi.RPC.output(Zoi.array(Zoi.object(%{}, coerce: true)))
+        Ospec.new()
+        |> Ospec.route(method: :get, path: "/users")
+        |> Ospec.output(Zoi.array(Zoi.object(%{}, coerce: true)))
 
       client =
         Client.new(
@@ -361,11 +361,11 @@ defmodule Zoi.RPC.ClientTest do
   describe "module-based client" do
     # Define a test client with req_options for testing
     defmodule TestClient do
-      use Zoi.RPC.Client,
+      use Ospec.Client,
         base_url: "http://localhost:4000/api",
         headers: %{"x-test" => "true"},
-        req_options: [plug: {Req.Test, Zoi.RPC.ClientTest}],
-        contracts: Zoi.RPC.TestContract.contracts()
+        req_options: [plug: {Req.Test, Ospec.ClientTest}],
+        contracts: Ospec.TestContract.contracts()
     end
 
     test "client/0 returns configured client" do

@@ -1,6 +1,6 @@
-defmodule Zoi.RPC.Client do
+defmodule Ospec.Client do
   @moduledoc """
-  Type-safe HTTP client for Zoi.RPC contracts.
+  Type-safe HTTP client for Ospec contracts.
 
   The client validates input before sending and validates output on response,
   ensuring end-to-end type safety.
@@ -19,16 +19,16 @@ defmodule Zoi.RPC.Client do
         def contracts do
           %{
             list_users:
-              Zoi.RPC.new()
-              |> Zoi.RPC.route(method: :get, path: "/users")
-              |> Zoi.RPC.input(query: Zoi.object(%{page: Zoi.integer() |> Zoi.default(1)}, coerce: true))
-              |> Zoi.RPC.output(Zoi.array(@user)),
+              Ospec.new()
+              |> Ospec.route(method: :get, path: "/users")
+              |> Ospec.input(query: Zoi.object(%{page: Zoi.integer() |> Zoi.default(1)}, coerce: true))
+              |> Ospec.output(Zoi.array(@user)),
 
             find_user:
-              Zoi.RPC.new()
-              |> Zoi.RPC.route(method: :get, path: "/users/:id")
-              |> Zoi.RPC.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
-              |> Zoi.RPC.output(@user)
+              Ospec.new()
+              |> Ospec.route(method: :get, path: "/users/:id")
+              |> Ospec.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
+              |> Ospec.output(@user)
           }
         end
       end
@@ -36,7 +36,7 @@ defmodule Zoi.RPC.Client do
   Then create a client module that auto-generates functions:
 
       defmodule MyApp.APIClient do
-        use Zoi.RPC.Client,
+        use Ospec.Client,
           base_url: "http://localhost:4000/api",
           headers: %{"authorization" => "Bearer token"},
           contracts: MyAPI.Contract.contracts()
@@ -51,8 +51,8 @@ defmodule Zoi.RPC.Client do
 
   For more control, use the functional API directly:
 
-      client = Zoi.RPC.Client.new(base_url: "http://localhost:4000/api")
-      {:ok, users} = Zoi.RPC.Client.call(client, MyAPI.Contract.contracts().list_users, %{page: 1})
+      client = Ospec.Client.new(base_url: "http://localhost:4000/api")
+      {:ok, users} = Ospec.Client.call(client, MyAPI.Contract.contracts().list_users, %{page: 1})
 
   ## Options
 
@@ -67,9 +67,9 @@ defmodule Zoi.RPC.Client do
 
       case MyApp.APIClient.find_user(%{id: 123}) do
         {:ok, user} -> # Handle success
-        {:error, %Zoi.RPC.Client.ValidationError{}} -> # Input/output validation failed
-        {:error, %Zoi.RPC.Client.RequestError{}} -> # HTTP request failed
-        {:error, %Zoi.RPC.Client.ServerError{}} -> # Server returned error response
+        {:error, %Ospec.Client.ValidationError{}} -> # Input/output validation failed
+        {:error, %Ospec.Client.RequestError{}} -> # HTTP request failed
+        {:error, %Ospec.Client.ServerError{}} -> # Server returned error response
       end
   """
 
@@ -85,7 +85,7 @@ defmodule Zoi.RPC.Client do
       Returns the configured client.
       """
       def client() do
-        Zoi.RPC.Client.new(
+        Ospec.Client.new(
           base_url: @base_url,
           headers: @headers,
           req_options: @req_options
@@ -101,14 +101,14 @@ defmodule Zoi.RPC.Client do
         Returns `{:ok, result}` on success or `{:error, reason}` on failure.
         """
         def unquote(func_name)(input \\ %{}) do
-          Zoi.RPC.Client.call(client(), @contract, input)
+          Ospec.Client.call(client(), @contract, input)
         end
 
         @doc """
         Same as `#{func_name}/1` but raises on error.
         """
         def unquote(:"#{func_name}!")(input \\ %{}) do
-          Zoi.RPC.Client.call!(client(), @contract, input)
+          Ospec.Client.call!(client(), @contract, input)
         end
       end
     end
@@ -166,9 +166,9 @@ defmodule Zoi.RPC.Client do
 
   ## Examples
 
-      client = Zoi.RPC.Client.new(base_url: "http://localhost:4000/api")
+      client = Ospec.Client.new(base_url: "http://localhost:4000/api")
 
-      client = Zoi.RPC.Client.new(
+      client = Ospec.Client.new(
         base_url: "http://localhost:4000/api",
         headers: %{"authorization" => "Bearer token"}
       )
@@ -190,10 +190,10 @@ defmodule Zoi.RPC.Client do
 
   ## Examples
 
-      {:ok, users} = Zoi.RPC.Client.call(client, MyAPI.Contract.list_users(), %{page: 1})
-      {:ok, user} = Zoi.RPC.Client.call(client, MyAPI.Contract.find_user(), %{id: 123})
+      {:ok, users} = Ospec.Client.call(client, MyAPI.Contract.list_users(), %{page: 1})
+      {:ok, user} = Ospec.Client.call(client, MyAPI.Contract.find_user(), %{id: 123})
   """
-  @spec call(t(), Zoi.RPC.t(), map()) ::
+  @spec call(t(), Ospec.t(), map()) ::
           {:ok, term()} | {:error, ValidationError.t() | RequestError.t() | ServerError.t()}
   def call(client, contract, input \\ %{}) do
     with {:ok, validated_input} <- validate_input(contract, input),
@@ -205,7 +205,7 @@ defmodule Zoi.RPC.Client do
   @doc """
   Same as `call/3` but raises on error.
   """
-  @spec call!(t(), Zoi.RPC.t(), map()) :: term()
+  @spec call!(t(), Ospec.t(), map()) :: term()
   def call!(client, contract, input \\ %{}) do
     case call(client, contract, input) do
       {:ok, result} -> result
@@ -277,7 +277,7 @@ defmodule Zoi.RPC.Client do
 
   defp ensure_req_available! do
     unless Code.ensure_loaded?(Req) do
-      raise "Req is required for Zoi.RPC.Client. Add {:req, \"~> 0.5\"} to your dependencies."
+      raise "Req is required for Ospec.Client. Add {:req, \"~> 0.5\"} to your dependencies."
     end
   end
 
