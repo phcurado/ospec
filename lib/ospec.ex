@@ -279,13 +279,15 @@ defmodule Ospec do
                   body: Zoi.struct(Zoi.Types.Map) |> Zoi.optional()
                 )
 
+  @output_schema Zoi.json()
+
   @handler_schema Zoi.function(arity: 2)
 
   @schema Zoi.struct(__MODULE__, %{
             route: @route_schema,
-            input: @input_schema |> Zoi.optional(),
-            output: Zoi.json() |> Zoi.optional(),
-            handler: @handler_schema |> Zoi.optional()
+            input: @input_schema |> Zoi.nullish(),
+            output: @output_schema |> Zoi.nullish(),
+            handler: @handler_schema |> Zoi.nullish()
           })
 
   @type t :: unquote(Zoi.type_spec(@schema))
@@ -296,7 +298,7 @@ defmodule Ospec do
   @spec new() :: t()
   def new() do
     %__MODULE__{
-      route: %{method: :get, path: "/"},
+      route: [method: :get, path: "/"],
       input: nil,
       output: nil,
       handler: nil
@@ -330,7 +332,8 @@ defmodule Ospec do
 
   Accepts any Zoi schema type (object, array, string, etc.).
   """
-  @spec output(t(), Zoi.type()) :: t()
+
+  @spec output(t(), unquote(Zoi.type_spec(@output_schema))) :: t()
   def output(ospec, output) do
     %{ospec | output: output}
   end

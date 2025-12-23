@@ -118,6 +118,8 @@ defmodule Ospec.Client do
     @moduledoc "Raised when input or output validation fails."
     defexception [:message, :errors, :phase]
 
+    @type t :: %__MODULE__{message: binary(), errors: term(), phase: :input | :output}
+
     @impl true
     def message(%{message: message}), do: message
   end
@@ -126,6 +128,8 @@ defmodule Ospec.Client do
     @moduledoc "Raised when HTTP request fails."
     defexception [:message, :reason]
 
+    @type t :: %__MODULE__{message: binary(), reason: term()}
+
     @impl true
     def message(%{message: message}), do: message
   end
@@ -133,6 +137,13 @@ defmodule Ospec.Client do
   defmodule ServerError do
     @moduledoc "Raised when server returns an error response."
     defexception [:message, :status, :code, :data]
+
+    @type t :: %__MODULE__{
+            message: binary(),
+            status: integer(),
+            code: binary() | nil,
+            data: term()
+          }
 
     @impl true
     def message(%{message: message}), do: message
@@ -148,7 +159,7 @@ defmodule Ospec.Client do
                  )
 
   @type t :: %__MODULE__{
-          base_url: String.t(),
+          base_url: binary(),
           headers: map(),
           req_options: keyword()
         }

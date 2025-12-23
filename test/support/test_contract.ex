@@ -8,9 +8,7 @@ defmodule Ospec.TestContract do
       list_users:
         Ospec.new()
         |> Ospec.route(method: :get, path: "/users")
-        |> Ospec.input(
-          query: Zoi.object(%{page: Zoi.integer() |> Zoi.default(1)}, coerce: true)
-        )
+        |> Ospec.input(query: Zoi.object(%{page: Zoi.integer() |> Zoi.default(1)}, coerce: true))
         |> Ospec.output(Zoi.array(@user_schema)),
       find_user:
         Ospec.new()
