@@ -309,9 +309,9 @@ defmodule Ospec do
   #{Zoi.describe(@route_schema)}
   """
   @spec route(t(), unquote(Zoi.type_spec(@route_schema))) :: t()
-  def route(rpc, route) do
+  def route(ospec, route) do
     Zoi.parse!(@route_schema, route)
-    %{rpc | route: route}
+    %{ospec | route: route}
   end
 
   @doc """
@@ -320,9 +320,9 @@ defmodule Ospec do
   #{Zoi.describe(@input_schema)}
   """
   @spec input(t(), unquote(Zoi.type_spec(@input_schema))) :: t()
-  def input(rpc, input) do
+  def input(ospec, input) do
     Zoi.parse!(@input_schema, input)
-    %{rpc | input: input}
+    %{ospec | input: input}
   end
 
   @doc """
@@ -331,8 +331,8 @@ defmodule Ospec do
   Accepts any Zoi schema type (object, array, string, etc.).
   """
   @spec output(t(), Zoi.type()) :: t()
-  def output(rpc, output) do
-    %{rpc | output: output}
+  def output(ospec, output) do
+    %{ospec | output: output}
   end
 
   @doc """
@@ -342,9 +342,9 @@ defmodule Ospec do
   `{:ok, result}` or `{:error, reason}`.
   """
   @spec handler(t(), unquote(Zoi.type_spec(@handler_schema))) :: t()
-  def handler(rpc, handler) do
+  def handler(ospec, handler) do
     Zoi.parse!(@handler_schema, handler)
-    %{rpc | handler: handler}
+    %{ospec | handler: handler}
   end
 
   @doc """

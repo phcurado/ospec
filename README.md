@@ -1,5 +1,7 @@
 # Ospec
 
+> **Warning:** This library is under active development and not yet published to Hex. The API may change.
+
 End-to-end type-safe APIs for Elixir using `Zoi` schemas and OpenAPI standards.
 
 Ospec enables you to define API contracts with typed inputs and outputs, then share those contracts between applications with type safety on both ends.
