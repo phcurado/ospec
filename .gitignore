@@ -20,7 +20,7 @@ erl_crash.dump
 *.ez
 
 # Ignore package tarball (built via "mix hex.build").
-zoi_rpc-*.tar
+ospec-*.tar
 
 # dialyxir plt files
 /priv/plts/*.plt

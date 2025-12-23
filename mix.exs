@@ -1,9 +1,9 @@
-defmodule ZoiRPC.MixProject do
+defmodule Ospec.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :zoi_rpc,
+      app: :ospec,
       version: "0.1.0",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -39,7 +39,7 @@ defmodule ZoiRPC.MixProject do
 
   defp deps do
     [
-      {:zoi, github: "phcurado/zoi"},
+      {:zoi, "~> 0.14"},
       {:plug, "~> 1.19"},
       {:jason, "~> 1.4"},
       {:req, "~> 0.5", optional: true},
