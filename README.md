@@ -287,12 +287,6 @@ end
 
 This will automatically include the endpoint in the OpenAPI documentation, based on the contract definition.
 
-## Architecture
-
-The library can be used in different ways depending on your needs. For a single Phoenix application, define contracts in a module like `MyApp.APISpec` and use them for validation and OpenAPI generation. For microservices or separate applications that need to communicate, extract contracts into a shared package that both server and client can depend on.
-
-Key design decisions: use Phoenix router for routing (not custom route matching), error format is `{code, message, data}` with `Zoi.treefy_errors` for validation errors, HTTP params have string keys so schemas need `coerce: true` for key normalization, input validation errors return 422 while output validation errors return 500 (since they indicate a server bug).
-
 ## Roadmap
 
 - `Ospec.Contract` behaviour
