@@ -7,7 +7,7 @@ defmodule OspecTest do
   describe "Ospec.new/0" do
     test "creates a new RPC schema" do
       assert %Ospec{
-               route: %{method: :get, path: "/"},
+               route: [method: :get, path: "/"],
                input: nil,
                output: nil,
                handler: nil
