@@ -4,7 +4,6 @@ defmodule Ospec.HandlerTest do
 
   import Ospec.Handler
 
-  # HTTP params have string keys, so we need coerce: true for key normalization
   @user_schema Zoi.object(%{id: Zoi.integer(), name: Zoi.string()}, coerce: true)
 
   defp list_users_contract do
@@ -28,12 +27,27 @@ defmodule Ospec.HandlerTest do
     |> Ospec.output(@user_schema)
   end
 
-  describe "handle/4" do
+  defp no_output_contract do
+    Ospec.new()
+    |> Ospec.route(method: :delete, path: "/users/:id")
+    |> Ospec.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
+  end
+
+  defp build_conn(method, path, opts) do
+    conn = conn(method, path)
+
+    conn
+    |> Map.put(:path_params, Keyword.get(opts, :path_params, %{}))
+    |> Map.put(:query_params, Keyword.get(opts, :query_params, %{}))
+    |> Map.put(:body_params, Keyword.get(opts, :body_params, %{}))
+  end
+
+  describe "handle/3" do
     test "successful request with query params" do
-      conn = conn(:get, "/users", %{"page" => "2"})
+      conn = build_conn(:get, "/users", query_params: %{"page" => "2"})
 
       conn =
-        handle(conn, conn.params, list_users_contract(), fn input, _conn ->
+        handle(conn, list_users_contract(), fn input, _conn ->
           assert input.page == 2
           {:ok, [%{id: 1, name: "Alice"}]}
         end)
@@ -43,10 +57,10 @@ defmodule Ospec.HandlerTest do
     end
 
     test "successful request with path params" do
-      conn = conn(:get, "/users/123", %{"id" => "123"})
+      conn = build_conn(:get, "/users/123", path_params: %{"id" => "123"})
 
       conn =
-        handle(conn, conn.params, find_user_contract(), fn input, _conn ->
+        handle(conn, find_user_contract(), fn input, _conn ->
           assert input.id == 123
           {:ok, %{id: 123, name: "Bob"}}
         end)
@@ -56,10 +70,10 @@ defmodule Ospec.HandlerTest do
     end
 
     test "successful request with body params" do
-      conn = conn(:post, "/users", %{"name" => "Charlie"})
+      conn = build_conn(:post, "/users", body_params: %{"name" => "Charlie"})
 
       conn =
-        handle(conn, conn.params, create_user_contract(), fn input, _conn ->
+        handle(conn, create_user_contract(), fn input, _conn ->
           assert input.name == "Charlie"
           {:ok, %{id: 1, name: "Charlie"}}
         end)
@@ -68,11 +82,29 @@ defmodule Ospec.HandlerTest do
       assert Jason.decode!(conn.resp_body) == %{"id" => 1, "name" => "Charlie"}
     end
 
-    test "validation error on invalid input" do
-      conn = conn(:get, "/users", %{"page" => "not_a_number"})
+    test "input sources are isolated (no key bleeding)" do
+      # This test ensures query params don't leak into body validation
+      conn =
+        build_conn(:post, "/users",
+          query_params: %{"name" => "from_query"},
+          body_params: %{"name" => "from_body"}
+        )
 
       conn =
-        handle(conn, conn.params, list_users_contract(), fn _input, _conn ->
+        handle(conn, create_user_contract(), fn input, _conn ->
+          # Should get body value, not query value
+          assert input.name == "from_body"
+          {:ok, %{id: 1, name: input.name}}
+        end)
+
+      assert conn.status == 200
+    end
+
+    test "validation error on invalid input" do
+      conn = build_conn(:get, "/users", query_params: %{"page" => "not_a_number"})
+
+      conn =
+        handle(conn, list_users_contract(), fn _input, _conn ->
           {:ok, []}
         end)
 
@@ -84,10 +116,10 @@ defmodule Ospec.HandlerTest do
     end
 
     test "handler returns not_found error" do
-      conn = conn(:get, "/users/999", %{"id" => "999"})
+      conn = build_conn(:get, "/users/999", path_params: %{"id" => "999"})
 
       conn =
-        handle(conn, conn.params, find_user_contract(), fn _input, _conn ->
+        handle(conn, find_user_contract(), fn _input, _conn ->
           {:error, :not_found}
         end)
 
@@ -97,10 +129,10 @@ defmodule Ospec.HandlerTest do
     end
 
     test "handler returns unauthorized error" do
-      conn = conn(:get, "/users/1", %{"id" => "1"})
+      conn = build_conn(:get, "/users/1", path_params: %{"id" => "1"})
 
       conn =
-        handle(conn, conn.params, find_user_contract(), fn _input, _conn ->
+        handle(conn, find_user_contract(), fn _input, _conn ->
           {:error, :unauthorized}
         end)
 
@@ -110,10 +142,10 @@ defmodule Ospec.HandlerTest do
     end
 
     test "handler returns custom error message" do
-      conn = conn(:get, "/users/1", %{"id" => "1"})
+      conn = build_conn(:get, "/users/1", path_params: %{"id" => "1"})
 
       conn =
-        handle(conn, conn.params, find_user_contract(), fn _input, _conn ->
+        handle(conn, find_user_contract(), fn _input, _conn ->
           {:error, "Something went wrong"}
         end)
 
@@ -124,10 +156,10 @@ defmodule Ospec.HandlerTest do
     end
 
     test "handler returns generic error" do
-      conn = conn(:get, "/users/1", %{"id" => "1"})
+      conn = build_conn(:get, "/users/1", path_params: %{"id" => "1"})
 
       conn =
-        handle(conn, conn.params, find_user_contract(), fn _input, _conn ->
+        handle(conn, find_user_contract(), fn _input, _conn ->
           {:error, :some_unexpected_error}
         end)
 
@@ -137,24 +169,26 @@ defmodule Ospec.HandlerTest do
       assert body["message"] == "Internal server error"
     end
 
-    test "output validation error" do
-      conn = conn(:get, "/users/1", %{"id" => "1"})
+    test "output validation error returns 500 (server bug)" do
+      conn = build_conn(:get, "/users/1", path_params: %{"id" => "1"})
 
       conn =
-        handle(conn, conn.params, find_user_contract(), fn _input, _conn ->
+        handle(conn, find_user_contract(), fn _input, _conn ->
           {:ok, %{invalid: "output"}}
         end)
 
-      assert conn.status == 422
+      # Output validation failure is a server bug, not a client error
+      assert conn.status == 500
       body = Jason.decode!(conn.resp_body)
-      assert body["code"] == "VALIDATION_ERROR"
+      assert body["code"] == "OUTPUT_VALIDATION_ERROR"
+      assert body["message"] == "Response validation failed"
     end
 
     test "default values are applied" do
-      conn = conn(:get, "/users", %{})
+      conn = build_conn(:get, "/users", query_params: %{})
 
       conn =
-        handle(conn, conn.params, list_users_contract(), fn input, _conn ->
+        handle(conn, list_users_contract(), fn input, _conn ->
           assert input.page == 1
           {:ok, []}
         end)
@@ -164,13 +198,55 @@ defmodule Ospec.HandlerTest do
 
     test "conn is passed to handler" do
       conn =
-        conn(:get, "/users", %{})
+        build_conn(:get, "/users", query_params: %{})
         |> Plug.Conn.assign(:current_user, %{id: 42})
 
       conn =
-        handle(conn, conn.params, list_users_contract(), fn _input, conn ->
+        handle(conn, list_users_contract(), fn _input, conn ->
           assert conn.assigns.current_user == %{id: 42}
           {:ok, []}
+        end)
+
+      assert conn.status == 200
+    end
+
+    test "contract without output schema skips output validation" do
+      conn = build_conn(:delete, "/users/1", path_params: %{"id" => "1"})
+
+      conn =
+        handle(conn, no_output_contract(), fn input, _conn ->
+          assert input.id == 1
+          {:ok, %{deleted: true}}
+        end)
+
+      assert conn.status == 200
+      assert Jason.decode!(conn.resp_body) == %{"deleted" => true}
+    end
+
+    test "multiple input sources combined" do
+      contract =
+        Ospec.new()
+        |> Ospec.route(method: :put, path: "/users/:id")
+        |> Ospec.input(
+          params: Zoi.object(%{id: Zoi.integer()}, coerce: true),
+          query: Zoi.object(%{notify: Zoi.boolean() |> Zoi.default(false)}, coerce: true),
+          body: Zoi.object(%{name: Zoi.string()}, coerce: true)
+        )
+        |> Ospec.output(@user_schema)
+
+      conn =
+        build_conn(:put, "/users/123",
+          path_params: %{"id" => "123"},
+          query_params: %{"notify" => "true"},
+          body_params: %{"name" => "Updated"}
+        )
+
+      conn =
+        handle(conn, contract, fn input, _conn ->
+          assert input.id == 123
+          assert input.notify == true
+          assert input.name == "Updated"
+          {:ok, %{id: 123, name: "Updated"}}
         end)
 
       assert conn.status == 200

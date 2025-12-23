@@ -1,69 +1,51 @@
 defmodule Ospec.Handler do
   @moduledoc """
-  Handles Ospec requests with input validation, handler execution, and output validation.
+  Server-side request handling for Ospec contracts.
 
-  ## Usage
-
-  Import in your Phoenix controllers and use the `handle/4` function:
+  This module validates incoming requests against contract schemas, executes your handler function,
+  and validates the response before sending it back. Input is automatically extracted from the
+  appropriate `conn` fields based on the contract's input schema (`:params` from `conn.path_params`,
+  `:query` from `conn.query_params`, `:body` from `conn.body_params`).
 
       defmodule MyAppWeb.UsersController do
         use MyAppWeb, :controller
-        import Ospec.Handler
 
-        @contracts MyAPI.Contract.contracts()
-
-        def list(conn, params) do
-          handle(conn, params, @contracts.list_users, fn input, _conn ->
-            {:ok, MyApp.Repo.all(User)}
-          end)
-        end
-
-        def find(conn, params) do
-          handle(conn, params, @contracts.find_user, fn input, _conn ->
-            case MyApp.Repo.get(User, input.id) do
-              nil -> {:error, :not_found}
-              user -> {:ok, user}
-            end
+        def list(conn, _params) do
+          Ospec.handle(conn, MyAPI.list_users(), fn input, _conn ->
+            users = MyApp.Account.list_users(%{page: input.page, page_size: input.page_size})
+            {:ok, users}
           end)
         end
       end
 
-  Then add routes in your Phoenix router:
+  The handler function receives the validated input and the conn, and should return
+  `{:ok, result}` or `{:error, reason}`. Common error atoms like `:not_found` and `:unauthorized`
+  are automatically mapped to appropriate HTTP status codes.
 
-      scope "/api", MyAppWeb do
-        pipe_through :api
-
-        get "/users", UsersController, :list
-        get "/users/:id", UsersController, :find
-      end
+  Input validation errors return 422, while output validation errors return 500 since they
+  indicate a server bug (the response doesn't match the contract).
   """
 
   import Plug.Conn
 
   @doc """
-  Handles an RPC request.
+  Handles an HTTP request using a contract.
 
-  1. Parses and validates input from params (path + query + body)
-  2. Calls the handler function with validated input
-  3. Validates output against the contract schema
-  4. Returns JSON response
-
-  ## Parameters
-
-  - `conn` - The Plug.Conn
-  - `params` - Phoenix params (merged path params, query params, body)
-  - `contract` - The Ospec contract (without handler)
-  - `handler` - Function `(input, conn) -> {:ok, result} | {:error, reason}`
+  Validates input from conn, calls the handler, validates output, and sends the JSON response.
   """
-  def handle(conn, params, contract, handler) do
-    with {:ok, input} <- validate_input(contract, params),
+  def handle(conn, contract, handler) do
+    with {:ok, input} <- validate_input(contract, conn),
          {:ok, result} <- call_handler(handler, input, conn),
          {:ok, output} <- validate_output(contract, result) do
       send_json(conn, 200, output)
     else
-      {:error, :validation, errors} ->
+      {:error, :input_validation, errors} ->
         tree = Zoi.treefy_errors(errors)
         send_error(conn, 422, "VALIDATION_ERROR", "Validation failed", tree)
+
+      {:error, :output_validation, errors} ->
+        tree = Zoi.treefy_errors(errors)
+        send_error(conn, 500, "OUTPUT_VALIDATION_ERROR", "Response validation failed", tree)
 
       {:error, :not_found} ->
         send_error(conn, 404, "NOT_FOUND", "Resource not found")
@@ -79,12 +61,12 @@ defmodule Ospec.Handler do
     end
   end
 
-  defp validate_input(contract, params) do
+  defp validate_input(contract, conn) do
     input_schemas = contract.input || []
 
-    with {:ok, validated_params} <- parse_schema(input_schemas[:params], params),
-         {:ok, validated_query} <- parse_schema(input_schemas[:query], params),
-         {:ok, validated_body} <- parse_schema(input_schemas[:body], params) do
+    with {:ok, validated_params} <- parse_schema(input_schemas[:params], conn.path_params),
+         {:ok, validated_query} <- parse_schema(input_schemas[:query], conn.query_params),
+         {:ok, validated_body} <- parse_schema(input_schemas[:body], conn.body_params) do
       merged =
         Map.merge(validated_params, validated_query)
         |> Map.merge(validated_body)
@@ -93,12 +75,12 @@ defmodule Ospec.Handler do
     end
   end
 
-  defp parse_schema(nil, _params), do: {:ok, %{}}
+  defp parse_schema(nil, _data), do: {:ok, %{}}
 
-  defp parse_schema(schema, params) do
-    case Zoi.parse(schema, params, coerce: true) do
+  defp parse_schema(schema, data) do
+    case Zoi.parse(schema, data, coerce: true) do
       {:ok, parsed} -> {:ok, parsed}
-      {:error, errors} -> {:error, :validation, errors}
+      {:error, errors} -> {:error, :input_validation, errors}
     end
   end
 
@@ -106,10 +88,12 @@ defmodule Ospec.Handler do
     handler.(input, conn)
   end
 
+  defp validate_output(%{output: nil}, result), do: {:ok, result}
+
   defp validate_output(contract, result) do
     case Zoi.parse(contract.output, result) do
       {:ok, output} -> {:ok, output}
-      {:error, errors} -> {:error, :validation, errors}
+      {:error, errors} -> {:error, :output_validation, errors}
     end
   end
 

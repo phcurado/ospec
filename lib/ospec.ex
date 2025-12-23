@@ -9,9 +9,7 @@ defmodule Ospec do
 
   This library aims to address a common challenge when building Elixir applications that needs explicit contracts and API definitions.
 
-  Imagine you have a Phoenix backend serving JSON APIs, being integrated with another Elixir app or a frontend app. Whenever you make a change
-  to the API (adding fields, changing types, etc.), you need to ensure both sides stay in sync. This is where a shared contract definition becomes is
-  useful, since it allows both sides to validate against the same schema. This library aims to facilitate creating shared contracts and explicit API definitions, leveraging `Zoi` for type safety, validation and JSON Schema for OpenAPI documentation.
+  Ospec helps you define your API contracts with typed inputs and outputs. These contracts serve as the source of truth for your API, enabling input/output validation and OpenAPI documentation generation. If you have multiple services communicating with each other, contracts can be shared as a separate package - but for most use cases, you'll just define them directly in your Phoenix application.
 
   ## Installation
 
@@ -23,7 +21,7 @@ defmodule Ospec do
         ]
       end
 
-  Also add in the `formatter.exs`  file to format the code properly:
+  Also add in the `formatter.exs` file to format the code properly:
 
       [
         import_deps: [:ospec]
@@ -31,15 +29,11 @@ defmodule Ospec do
 
   ## Contract Definition
 
-  Contracts define the API schema without implementation. They can be shared as a separate package between server and client applications.
-
-  It's recommended to create a dedicated package (ex: `my_api_contract`), and add your API definitions there. Think of this package as the "source of truth" for your API schema, which can act as a server contract and a client libray.
-
+  Contracts define the API schema without implementation. For most applications, you'll define contracts directly in your Phoenix app. If you have microservices or separate Elixir applications that need to communicate, you can extract contracts into a shared package.
 
   Let's imagine we have a simple User API with three endpoints:
 
-      # In your package: user_api
-      defmodule UserAPI do
+      defmodule MyApp.APISpec do
         @behaviour Ospec.Contract
 
         @user Zoi.object(%{
@@ -47,7 +41,7 @@ defmodule Ospec do
           name: Zoi.string(),
           email: Zoi.string()
         })
-   
+
         @impl true
         def api_spec() do
           %{
@@ -89,42 +83,40 @@ defmodule Ospec do
         end
       end
 
-  The `input/2` function accepts separate schemas for different input sources:
+  The `input/2` function accepts separate schemas for different input sources: `:params` for path parameters (`/users/:id`), `:query` for query string parameters (`?page=1`), and `:body` for request body (JSON payload).
 
-  - `:params` - Path parameters (e.g., `/users/:id`)
-  - `:query` - Query string parameters (e.g., `?page=1&page_size=20`)
-  - `:body` - Request body (JSON payload)
-
-  You can architect your contract module the way it makes the most sense for your project. As you can see, the contract definitions are just plain functions that defines the shape of your API.
+  You can architect your contract module the way it makes the most sense for your project. As you can see, the contract definitions are just plain functions that define the shape of your API.
 
   ## Server
 
   Now with the contract defined, you can just reference the contract definitions in your controllers to implement the server logic.
 
-      defmodule UserAppWeb.UsersController do
-        use UserAppWeb, :controller
+      defmodule MyAppWeb.UsersController do
+        use MyAppWeb, :controller
 
-        def list(conn, params) do
-          Ospec.handle(conn, params, UserAPI.list_users(), fn input, _conn ->
-            users = UserApp.Users.list(input.page, input.page_size)
+        alias MyApp.APISpec
+
+        def list(conn, _params) do
+          Ospec.handle(conn, APISpec.list_users(), fn input, _conn ->
+            users = MyApp.Users.list(input.page, input.page_size)
             {:ok, users}
           end)
         end
 
-        def find(conn, params) do
-          Ospec.handle(conn, params, UserAPI.find_user(), fn input, _conn ->
-            case UserApp.Users.get(input.id) do
+        def find(conn, _params) do
+          Ospec.handle(conn, APISpec.find_user(), fn input, _conn ->
+            case MyApp.Users.get(input.id) do
               nil -> {:error, :not_found}
               user -> {:ok, user}
             end
           end)
         end
 
-        def create(conn, params) do
-          Ospec.handle(conn, params, UserAPI.create_user(), fn input, conn ->
+        def create(conn, _params) do
+          Ospec.handle(conn, APISpec.create_user(), fn input, conn ->
             current_user = conn.assigns.current_user
 
-            case UserApp.Users.create(input, created_by: current_user) do
+            case MyApp.Users.create(input, created_by: current_user) do
               {:ok, user} -> {:ok, user}
               {:error, changeset} -> {:error, changeset}
             end
@@ -132,14 +124,12 @@ defmodule Ospec do
         end
       end
 
-  `Ospec.handle/4` will validate the input against the defined schema, call the handler function, and validate the output before sending the response.
+  `Ospec.handle/3` validates the input against the defined schema, calls the handler function, and validates the output before sending the response. Input is automatically extracted from the appropriate `conn` fields based on the contract's input schema (`:params` from `conn.path_params`, `:query` from `conn.query_params`, `:body` from `conn.body_params`).
 
   ### Phoenix Router
 
   Finally, set up the routes in your Phoenix router:
 
-
-      # In your Phoenix router
       pipeline :api do
         plug :accepts, ["json"]
       end
@@ -154,11 +144,11 @@ defmodule Ospec do
 
   Nothing different from a regular Phoenix setup!
 
-  You can also leverage `Ospec.Router` to automatically generate routes from the contract definitions.
+  You can also leverage `Ospec.Router` to automatically generate routes from the contract definitions:
 
-      defmodule UserAppWeb.Router do
-        use UserAppWeb, :router
-        use Ospec.Router, contracts: UserAPI.api_spec(),
+      defmodule MyAppWeb.Router do
+        use MyAppWeb, :router
+        use Ospec.Router, contracts: MyApp.APISpec.api_spec()
 
         pipeline :api do
           plug :accepts, ["json"]
@@ -167,24 +157,23 @@ defmodule Ospec do
         scope "/api", MyAppWeb do
           pipe_through :api
 
-          ospec :list_users, UserController, :list
-          ospec :find_user, UserController, :find
-          ospec :create_user, UserController, :create
+          ospec :list_users, UsersController, :list
+          ospec :find_user, UsersController, :find
+          ospec :create_user, UsersController, :create
         end
       end
 
-  the `ospec/3` macro will generate the method and path based on the contract definition.
+  The `ospec/3` macro will generate the method and path based on the contract definition.
 
   ## Client
 
-  Now that the server is set up, the consumer application can use the same contract defined by the shared package, with automatically generated type-safe functions for client requests. By default, `Ospec` uses `Req` as the HTTP client.
-  Following the previous example, let's create a client for the User API, in our `Billing` application:
+  The client is useful when you have separate applications communicating with each other. If you extracted your contracts into a shared package, the consumer application can use `Ospec.Client` with automatically generated type-safe functions. By default, `Ospec` uses `Req` as the HTTP client.
 
       defmodule Billing.UserAPIClient do
         use Ospec.Client,
           base_url: "http://localhost:4000/api",
           headers: %{"authorization" => "Bearer token"},
-          contracts: UserAPI.api_spec()
+          contracts: MyApp.APISpec.api_spec()
       end
 
       # Auto-generates functions from contracts:
@@ -214,9 +203,11 @@ defmodule Ospec do
 
   Then, generate OpenAPI documentation from the contract definitions:
 
-      defmodule UserAppWeb.APISpec do
+      defmodule MyAppWeb.APISpec do
         alias Oaskit.Spec.Paths
         alias Oaskit.Spec.Server
+
+        alias MyApp.APISpec
 
         def spec() do
           %{
@@ -226,46 +217,47 @@ defmodule Ospec do
               version: "1.0.0",
               description: "Main HTTP API for My App"
             },
-            servers: [Server.from_config(:user_app, UserAppWeb.Endpoint)],
-            paths: Paths.from_router(UserAppWeb.Router, filter: &String.starts_with?(&1.path, "/api/")),
+            servers: [Server.from_config(:my_app, MyAppWeb.Endpoint)],
+            paths: Paths.from_router(MyAppWeb.Router, filter: &String.starts_with?(&1.path, "/api/")),
             components: %{
-              schemas: Ospec.OpenAPI.schemas_from_contracts(UserAPI.api_spec())
+              schemas: Ospec.OpenAPI.schemas_from_contracts(APISpec.api_spec())
             }
           }
         end
       end
 
-  Now you just reference on your controller, which functions should be documented:
+  Now you just reference on your controller which functions should be documented:
 
-      defmodule UserAppWeb.UsersController do
-        use UserAppWeb, :controller
+      defmodule MyAppWeb.UsersController do
+        use MyAppWeb, :controller
+        use Ospec.OpenAPI
 
-        import Ospec.OpenAPI
+        alias MyApp.APISpec
 
-        open_api true
-        def list(conn, params) do
-          Ospec.handle(conn, params, UserAPI.list_users(), fn input, _conn ->
-            users = UserApp.Users.list(input.page, input.page_size)
+        open_api APISpec.list_users()
+        def list(conn, _params) do
+          Ospec.handle(conn, APISpec.list_users(), fn input, _conn ->
+            users = MyApp.Users.list(input.page, input.page_size)
             {:ok, users}
           end)
         end
 
-        open_api true
-        def find(conn, params) do
-          Ospec.handle(conn, params, UserAPI.find_user(), fn input, _conn ->
-            case UserApp.Users.get(input.id) do
+        open_api APISpec.find_user()
+        def find(conn, _params) do
+          Ospec.handle(conn, APISpec.find_user(), fn input, _conn ->
+            case MyApp.Users.get(input.id) do
               nil -> {:error, :not_found}
               user -> {:ok, user}
             end
           end)
         end
 
-        open_api true
-        def create(conn, params) do
-          Ospec.handle(conn, params, UserAPI.create_user(), fn input, conn ->
+        open_api APISpec.create_user()
+        def create(conn, _params) do
+          Ospec.handle(conn, APISpec.create_user(), fn input, conn ->
             current_user = conn.assigns.current_user
 
-            case UserApp.Users.create(input, created_by: current_user) do
+            case MyApp.Users.create(input, created_by: current_user) do
               {:ok, user} -> {:ok, user}
               {:error, changeset} -> {:error, changeset}
             end
@@ -276,7 +268,10 @@ defmodule Ospec do
   This will automatically include the endpoint in the OpenAPI documentation, based on the contract definition.
   """
 
-  @route_schema Zoi.keyword(method: Zoi.enum([:get, :post, :put, :delete]), path: Zoi.string())
+  @route_schema Zoi.keyword(
+                  method: Zoi.enum([:get, :post, :put, :delete]),
+                  path: Zoi.string() |> Zoi.starts_with("/")
+                )
 
   @input_schema Zoi.keyword(
                   params: Zoi.struct(Zoi.Types.Map) |> Zoi.optional(),
@@ -351,4 +346,21 @@ defmodule Ospec do
     Zoi.parse!(@handler_schema, handler)
     %{rpc | handler: handler}
   end
+
+  @doc """
+  Handles an HTTP request using a contract.
+
+  Validates input from conn, calls the handler, validates output, and sends the response.
+
+  ## Example
+
+      def list(conn, _params) do
+        Ospec.handle(conn, MyAPI.list_users(), fn input, _conn ->
+          {:ok, MyApp.Users.list(input.page, input.page_size)}
+        end)
+      end
+
+  See `Ospec.Handler.handle/3` for details.
+  """
+  defdelegate handle(conn, contract, handler), to: Ospec.Handler
 end
