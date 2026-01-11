@@ -11,29 +11,41 @@ defmodule Ospec.Client do
 
   ## Module-based Usage
 
-  First, define your contracts with a `contracts/0` function:
+  To generate a client using `Ospec`, it's recommended to create a package with the API specification that will be consumed
+  by the Server and the Client applications.
 
-      defmodule MyAPI.Contract do
-        @user Zoi.object(%{id: Zoi.integer(), name: Zoi.string()}, coerce: true)
+      # Separated package
+      defmodule MyServerClient do
+        @behaviour Ospec
 
-        def contracts do
+        @user Zoi.object(%{
+          id: Zoi.integer(),
+          name: Zoi.string(),
+          email: Zoi.string()
+        })
+
+        @impl true
+        def api_spec() do
           %{
-            list_users:
-              Ospec.new()
-              |> Ospec.route(method: :get, path: "/users")
-              |> Ospec.input(query: Zoi.object(%{page: Zoi.integer() |> Zoi.default(1)}, coerce: true))
-              |> Ospec.output(Zoi.array(@user)),
-
-            find_user:
-              Ospec.new()
-              |> Ospec.route(method: :get, path: "/users/:id")
-              |> Ospec.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
-              |> Ospec.output(@user)
+            list_users: list_users()
+            # ... other methods
           }
+        end
+
+        def list_users() do
+          Ospec.new()
+          |> Ospec.route(method: :get, path: "/users")
+          |> Ospec.input(
+            query: Zoi.object(%{
+              page: Zoi.integer() |> Zoi.default(1),
+              page_size: Zoi.integer() |> Zoi.default(20)
+            }, coerce: true)
+          )
+          |> Ospec.output(Zoi.array(@user))
         end
       end
 
-  Then create a client module that auto-generates functions:
+  Then `Ospec` helps generating client module to integrate with the server endpoints:
 
       defmodule MyApp.APIClient do
         use Ospec.Client,
@@ -44,15 +56,14 @@ defmodule Ospec.Client do
 
       # Auto-generates functions from contracts:
       {:ok, users} = MyApp.APIClient.list_users(%{page: 1})
-      {:ok, user} = MyApp.APIClient.find_user(%{id: 123})
-      user = MyApp.APIClient.find_user!(%{id: 123})  # raises on error
+      MyApp.APIClient.list_users(%{not_valid: 123})  # raises on error
 
   ## Functional Usage
 
-  For more control, use the functional API directly:
+  For more control, you can also create the client to use on the function calls
 
-      client = Ospec.Client.new(base_url: "http://localhost:4000/api")
-      {:ok, users} = Ospec.Client.call(client, MyAPI.Contract.contracts().list_users, %{page: 1})
+      client = Ospec.Client.new(base_url: "http://localhost:4000/api", headers: %{"authorization" => "Bearer token"})
+      {:ok, users} = MyApp.APIClient.list_users(client, %{page: 1})
 
   ## Options
 
@@ -65,8 +76,8 @@ defmodule Ospec.Client do
 
   Returns `{:ok, result}` on success or `{:error, reason}` on failure:
 
-      case MyApp.APIClient.find_user(%{id: 123}) do
-        {:ok, user} -> # Handle success
+      case MyApp.APIClient.list_users(%{page: 2}) do
+        {:ok, users} -> # Handle success
         {:error, %Ospec.Client.ValidationError{}} -> # Input/output validation failed
         {:error, %Ospec.Client.RequestError{}} -> # HTTP request failed
         {:error, %Ospec.Client.ServerError{}} -> # Server returned error response

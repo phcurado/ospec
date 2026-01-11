@@ -40,7 +40,7 @@ Let's imagine we have a simple User API with three endpoints:
 
 ```elixir
 defmodule MyApp.APISpec do
-  @behaviour Ospec.Contract
+  @behaviour Ospec
 
   @user Zoi.object(%{
     id: Zoi.integer(),

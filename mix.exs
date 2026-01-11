@@ -39,7 +39,7 @@ defmodule Ospec.MixProject do
 
   defp deps do
     [
-      {:zoi, "~> 0.14"},
+      {:zoi, "~> 0.15"},
       {:plug, "~> 1.19"},
       {:jason, "~> 1.4"},
       {:req, "~> 0.5", optional: true},

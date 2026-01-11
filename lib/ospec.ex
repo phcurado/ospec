@@ -34,9 +34,7 @@ defmodule Ospec do
   Let's imagine we have a simple User API with three endpoints:
 
       defmodule MyApp.APISpec do
-        @behaviour Ospec.Contract
-
-        @user Zoi.object(%{
+        @user Zoi.map(%{
           id: Zoi.integer(),
           name: Zoi.string(),
           email: Zoi.string()
@@ -55,7 +53,7 @@ defmodule Ospec do
           Ospec.new()
           |> Ospec.route(method: :get, path: "/users")
           |> Ospec.input(
-            query: Zoi.object(%{
+            query: Zoi.map(%{
               page: Zoi.integer() |> Zoi.default(1),
               page_size: Zoi.integer() |> Zoi.default(20)
             }, coerce: true)
@@ -66,7 +64,7 @@ defmodule Ospec do
         def find_user() do
           Ospec.new()
           |> Ospec.route(method: :get, path: "/users/:id")
-          |> Ospec.input(params: Zoi.object(%{id: Zoi.integer()}, coerce: true))
+          |> Ospec.input(params: Zoi.map(%{id: Zoi.integer()}, coerce: true))
           |> Ospec.output(@user)
         end
 
@@ -74,7 +72,7 @@ defmodule Ospec do
           Ospec.new()
           |> Ospec.route(method: :post, path: "/users")
           |> Ospec.input(
-            body: Zoi.object(%{
+            body: Zoi.map(%{
               name: Zoi.string(),
               email: Zoi.string()
             }, coerce: true)
@@ -330,7 +328,7 @@ defmodule Ospec do
   @doc """
   Sets the output schema for the endpoint.
 
-  Accepts any Zoi schema type (object, array, string, etc.).
+  Accepts any Zoi schema type (map, array, string, etc.).
   """
 
   @spec output(t(), unquote(Zoi.type_spec(@output_schema))) :: t()
