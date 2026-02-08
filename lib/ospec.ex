@@ -2,15 +2,6 @@ defmodule Ospec do
   @moduledoc """
   End-to-end type-safe APIs for Elixir using `Zoi` schemas and OpenAPI standards.
 
-  Ospec enables you to define API contracts with typed inputs and outputs, then share
-  those contracts between applications with type safety on both ends.
-
-  ## Why?
-
-  This library aims to address a common challenge when building Elixir applications that need explicit contracts and API definitions.
-
-  Ospec helps you define your API contracts with typed inputs and outputs. These contracts serve as the source of truth for your API, enabling input/output validation and OpenAPI documentation generation. If you have multiple services communicating with each other, contracts can be shared as a separate package, but for most use cases, you'll just define them directly in your Phoenix or Plug-based application.
-
   ## Installation
 
   Add `ospec` to your list of dependencies in `mix.exs`:
@@ -21,160 +12,58 @@ defmodule Ospec do
         ]
       end
 
-  ## API Definition
+  ## Usage
 
-  `Ospec` supports API definition in a consistent and extensible way. Let's imagine we have a simple User API with three endpoints:
-
-      defmodule MyApp.APISpec do
-        import Ospec.API
-
-        @user Zoi.map(%{
-          id: Zoi.integer(),
-          name: Zoi.string(),
-          email: Zoi.string()
-        })
-
-        # Contracts define input, output, and controller
-        def list_users() do
-          Ospec.new()
-          |> Ospec.input(
-            query: Zoi.map(%{
-              page: Zoi.integer() |> Zoi.default(1),
-              page_size: Zoi.integer() |> Zoi.default(20)
-            })
-          )
-          |> Ospec.output(Zoi.array(@user))
-          |> Ospec.controller(MyAppWeb.UsersController, :index)
-        end
-
-        def find_user() do
-          Ospec.new()
-          |> Ospec.input(params: Zoi.map(%{id: Zoi.integer()}))
-          |> Ospec.output(@user)
-          |> Ospec.controller(MyAppWeb.UsersController, :show)
-        end
-
-        def create_user() do
-          Ospec.new()
-          |> Ospec.input(
-            body: Zoi.map(%{
-              name: Zoi.string(),
-              email: Zoi.string()
-            })
-          )
-          |> Ospec.output(@user)
-          |> Ospec.controller(MyAppWeb.UsersController, :create)
-        end
-
-        # Routing defines method and path
-        def api_spec() do
-          new()
-          |> scope("/api", fn router ->
-            router
-            |> scope("/users", fn router ->
-              router
-              |> route(:get, "/", list_users())
-              |> route(:get, "/:id", find_user())
-              |> route(:post, "/", create_user())
-            end)
-          end)
-        end
-      end
-
-  You can architect your API spec module the way it makes the most sense for your project. As you can see, the definition is just plain functions that define the shape of your API.
-  You can separate your API specification by domains or entities, like you would normally do with Phoenix Controllers, up to your application needs. For small applications it's recommended to add everything in a single module.
-
-  ### Controller
-
-  Controllers receive validated input via `Ospec.Conn.get_input/1`:
+  Define specs directly in your controllers using `use Ospec.Controller`:
 
       defmodule MyAppWeb.UsersController do
         use MyAppWeb, :controller
+        use Ospec.Controller
+
+        @user Zoi.map(%{id: Zoi.integer(), name: Zoi.string()})
+
+        ospec :index,
+          Ospec.new()
+          |> Ospec.route(:get, "/api/users")
+          |> Ospec.input(query: Zoi.map(%{page: Zoi.integer() |> Zoi.default(1)}))
+          |> Ospec.output(Zoi.array(@user))
+
+        ospec :show,
+          Ospec.new()
+          |> Ospec.route(:get, "/api/users/:id")
+          |> Ospec.input(params: Zoi.map(%{id: Zoi.integer()}))
+          |> Ospec.output(@user)
 
         def index(conn, _params) do
           input = Ospec.Conn.get_input(conn)
           users = MyApp.Accounts.list_users(input.query)
-          Ospec.HTTP.ok(users)
+          Ospec.Conn.json(conn, users)
         end
 
         def show(conn, _params) do
           input = Ospec.Conn.get_input(conn)
           case MyApp.Accounts.get_user(input.params.id) do
-            nil -> Ospec.HTTP.not_found()
-            user -> Ospec.HTTP.ok(user)
+            nil -> conn |> put_status(404) |> json(%{error: "not found"})
+            user -> Ospec.Conn.json(conn, user)
           end
         end
       end
 
-  Response helpers available in `Ospec.HTTP`:
+  Specs can also be defined in a separate module and referenced:
 
-      Ospec.HTTP.ok(data)           # 200 OK
-      Ospec.HTTP.created(data)      # 201 Created
-      Ospec.HTTP.no_content()       # 204 No Content
-      Ospec.HTTP.bad_request(data)  # 400 Bad Request
-      Ospec.HTTP.unauthorized()     # 401 Unauthorized
-      Ospec.HTTP.forbidden()        # 403 Forbidden
-      Ospec.HTTP.not_found()        # 404 Not Found
-
-  The data passed to success responses is validated against the output schema before sending.
-
-  ## Integrating with Phoenix
-
-  Generate Phoenix routes from your API specification:
-
-      defmodule MyAppWeb.Router do
-        use MyAppWeb, :router
-        import Ospec.Phoenix
-
-        pipeline :api do
-          plug :accepts, ["json"]
-        end
-
-        scope "/api" do
-          pipe_through :api
-          ospec_routes(MyApp.APISpec.api_spec(), prefix: "/api")
-        end
-      end
-
-  Invalid requests receive a 422 response before reaching your controller.
-
-  ### Middleware
-
-  Add middleware to scopes using `middleware/2`:
-
-      def api_spec() do
-        new()
-        |> scope("/api", fn router ->
-          router
-          |> middleware(&MyApp.Middleware.authenticate/2)
-          |> scope("/users", fn router ->
-            router
-            |> route(:get, "/", list_users())
-            |> route(:post, "/", create_user())
-          end)
-        end)
-      end
-
-  Middleware receives `conn` and `next`, calls `next.(conn)` to continue:
-
-      def authenticate(conn, next) do
-        case get_user_from_token(conn) do
-          {:ok, user} ->
-            conn = assign(conn, :current_user, user)
-            next.(conn)
-          :error ->
-            conn |> send_resp(401, "Unauthorized") |> halt()
-        end
-      end
+      ospec :index, MyApp.ApiSpec.list_users()
 
   ## OpenAPI Generation
 
-  Generate an OpenAPI specification from your API:
+  Generate an OpenAPI specification from your controllers:
 
       mix ospec.openapi --output openapi.json
-
-  Since contracts define input and output schemas, the OpenAPI spec is generated automatically.
   """
+
+  @route_schema Zoi.tuple({
+                  Zoi.enum([:get, :post, :put, :patch, :delete]),
+                  Zoi.string()
+                })
 
   @input_schema Zoi.keyword(
                   params: Zoi.struct(Zoi.Types.Map) |> Zoi.optional(),
@@ -184,15 +73,14 @@ defmodule Ospec do
 
   @output_schema Zoi.json()
 
-  @handler_schema Zoi.function(arity: 2)
-
-  @controller_schema Zoi.tuple([Zoi.atom(), Zoi.atom()])
-
   @schema Zoi.struct(__MODULE__, %{
+            route: @route_schema |> Zoi.nullish(),
             input: @input_schema |> Zoi.nullish(),
             output: @output_schema |> Zoi.nullish(),
-            handler: @handler_schema |> Zoi.nullish(),
-            controller: @controller_schema |> Zoi.nullish()
+            responses: Zoi.map(Zoi.integer(), Zoi.json()) |> Zoi.nullish(),
+            tags: Zoi.array(Zoi.string()) |> Zoi.nullish(),
+            summary: Zoi.string() |> Zoi.nullish(),
+            description: Zoi.string() |> Zoi.nullish()
           })
 
   @type t :: unquote(Zoi.type_spec(@schema))
@@ -201,13 +89,29 @@ defmodule Ospec do
   defstruct Zoi.Struct.struct_fields(@schema)
 
   @spec new() :: t()
-  def new() do
+  def new do
     %__MODULE__{
+      route: nil,
       input: nil,
       output: nil,
-      handler: nil,
-      controller: nil
+      responses: nil,
+      tags: nil,
+      summary: nil,
+      description: nil
     }
+  end
+
+  @doc """
+  Sets the HTTP method and path for the endpoint.
+
+      Ospec.new()
+      |> Ospec.route(:get, "/api/users")
+      |> Ospec.route(:get, "/api/users/:id")
+  """
+  @spec route(t(), atom(), String.t()) :: t()
+  def route(ospec, method, path) do
+    Zoi.parse!(@route_schema, {method, path})
+    %{ospec | route: {method, path}}
   end
 
   @doc """
@@ -222,40 +126,60 @@ defmodule Ospec do
   end
 
   @doc """
-  Sets the output schema for the endpoint.
+  Sets the output schema for the endpoint (200 response).
 
   Accepts any Zoi schema type (map, array, string, etc.).
   """
-
   @spec output(t(), unquote(Zoi.type_spec(@output_schema))) :: t()
   def output(ospec, output) do
     %{ospec | output: output}
   end
 
   @doc """
-  Sets the controller module and action for the endpoint.
+  Sets response schemas for specific status codes.
 
-      |> Ospec.controller(MyAppWeb.UsersController, :index)
+      Ospec.new()
+      |> Ospec.responses(%{
+        201 => @user,
+        400 => @error,
+        404 => @error
+      })
   """
-  @spec controller(t(), module(), atom()) :: t()
-  def controller(ospec, module, action) do
-    %{ospec | controller: {module, action}}
+  @spec responses(t(), map()) :: t()
+  def responses(ospec, responses) do
+    %{ospec | responses: responses}
   end
 
   @doc """
-  Sets an inline handler function for the endpoint.
+  Sets tags for grouping operations in documentation.
 
-  Alternative to `controller/3` for simple cases. The handler receives
-  `ctx` and `input`, returns a response using `Ospec.HTTP` helpers.
-
-      |> Ospec.handler(fn ctx, input ->
-        users = MyApp.Accounts.list_users(input.query)
-        Ospec.HTTP.ok(users)
-      end)
+      Ospec.new()
+      |> Ospec.tags(["users"])
   """
-  @spec handler(t(), unquote(Zoi.type_spec(@handler_schema))) :: t()
-  def handler(ospec, handler) do
-    Zoi.parse!(@handler_schema, handler)
-    %{ospec | handler: handler}
+  @spec tags(t(), [String.t()]) :: t()
+  def tags(ospec, tags) do
+    %{ospec | tags: tags}
+  end
+
+  @doc """
+  Sets a short summary for the operation.
+
+      Ospec.new()
+      |> Ospec.summary("List all users")
+  """
+  @spec summary(t(), String.t()) :: t()
+  def summary(ospec, summary) do
+    %{ospec | summary: summary}
+  end
+
+  @doc """
+  Sets a detailed description for the operation.
+
+      Ospec.new()
+      |> Ospec.description("Returns a paginated list of users.")
+  """
+  @spec description(t(), String.t()) :: t()
+  def description(ospec, description) do
+    %{ospec | description: description}
   end
 end

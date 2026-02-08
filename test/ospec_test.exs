@@ -5,84 +5,75 @@ defmodule OspecTest do
   import Ospec
 
   describe "Ospec.new/0" do
-    test "creates a new RPC schema" do
+    test "creates a new spec" do
       assert %Ospec{
-               route: [method: :get, path: "/"],
+               route: nil,
                input: nil,
-               output: nil,
-               handler: nil
+               output: nil
              } == new()
     end
   end
 
-  describe "Ospec.route/2" do
+  describe "Ospec.route/3" do
     test "sets the route method and path" do
-      rpc_schema =
+      spec =
         new()
-        |> route(method: :get, path: "/test")
+        |> route(:get, "/test")
 
-      assert rpc_schema.route[:method] == :get
-      assert rpc_schema.route[:path] == "/test"
+      assert spec.route == {:get, "/test"}
     end
 
     test "raises error for invalid method" do
-      error =
-        """
-        Parsing error:
-
-        invalid enum value: expected one of get, post, put, delete, at method
-        """
-
-      assert_raise Zoi.ParseError, error, fn ->
+      assert_raise Zoi.ParseError, fn ->
         new()
-        |> route(method: :invalid, path: "/test")
+        |> route(:invalid, "/test")
       end
     end
   end
 
   describe "Ospec.input/2" do
     test "sets input with query schema" do
-      query_schema = Zoi.object(%{page: Zoi.integer()})
+      query_schema = Zoi.map(%{page: Zoi.integer()})
 
-      rpc_schema =
+      spec =
         new()
         |> input(query: query_schema)
 
-      assert rpc_schema.input[:query] == query_schema
+      assert spec.input[:query] == query_schema
     end
 
     test "sets input with params schema" do
-      params_schema = Zoi.object(%{id: Zoi.integer()})
+      params_schema = Zoi.map(%{id: Zoi.integer()})
 
-      rpc_schema =
+      spec =
         new()
         |> input(params: params_schema)
 
-      assert rpc_schema.input[:params] == params_schema
+      assert spec.input[:params] == params_schema
     end
 
     test "sets input with body schema" do
-      body_schema = Zoi.object(%{name: Zoi.string()})
+      body_schema = Zoi.map(%{name: Zoi.string()})
 
-      rpc_schema =
+      spec =
         new()
         |> input(body: body_schema)
 
-      assert rpc_schema.input[:body] == body_schema
+      assert spec.input[:body] == body_schema
     end
 
     test "sets input with multiple sources" do
-      params_schema = Zoi.object(%{id: Zoi.integer()})
-      query_schema = Zoi.object(%{include: Zoi.string()})
-      body_schema = Zoi.object(%{name: Zoi.string()})
+      params_schema = Zoi.map(%{id: Zoi.integer()})
+      query_schema = Zoi.map(%{include: Zoi.string()})
+      body_schema = Zoi.map(%{name: Zoi.string()})
 
-      rpc_schema =
+      spec =
         new()
         |> input(params: params_schema, query: query_schema, body: body_schema)
 
-      assert rpc_schema.input[:params] == params_schema
-      assert rpc_schema.input[:query] == query_schema
-      assert rpc_schema.input[:body] == body_schema
+      assert spec.input[:params] == params_schema
+      assert spec.input[:query] == query_schema
+      assert spec.input[:body] == body_schema
     end
 
     test "raises error for invalid input schema" do
@@ -94,51 +85,25 @@ defmodule OspecTest do
   end
 
   describe "Ospec.output/2" do
-    test "sets object output schema" do
-      output_schema = Zoi.object(%{id: Zoi.integer(), name: Zoi.string()})
+    test "sets map output schema" do
+      output_schema = Zoi.map(%{id: Zoi.integer(), name: Zoi.string()})
 
-      rpc_schema =
+      spec =
         new()
         |> output(output_schema)
 
-      assert rpc_schema.output == output_schema
+      assert spec.output == output_schema
     end
 
     test "sets array output schema" do
-      user_schema = Zoi.object(%{id: Zoi.integer(), name: Zoi.string()})
+      user_schema = Zoi.map(%{id: Zoi.integer(), name: Zoi.string()})
       output_schema = Zoi.array(user_schema)
 
-      rpc_schema =
+      spec =
         new()
         |> output(output_schema)
 
-      assert rpc_schema.output == output_schema
-    end
-  end
-
-  describe "Ospec.handler/2" do
-    test "sets handler function" do
-      handler_fn = fn _input, _conn -> {:ok, %{}} end
-
-      rpc_schema =
-        new()
-        |> handler(handler_fn)
-
-      assert rpc_schema.handler == handler_fn
-    end
-
-    test "raises error for handler with wrong arity" do
-      assert_raise Zoi.ParseError, fn ->
-        new()
-        |> handler(fn _input -> {:ok, %{}} end)
-      end
-    end
-
-    test "raises error for non-function handler" do
-      assert_raise Zoi.ParseError, fn ->
-        new()
-        |> handler("not a function")
-      end
+      assert spec.output == output_schema
     end
   end
 end

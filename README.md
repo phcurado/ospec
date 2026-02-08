@@ -16,179 +16,159 @@ def deps do
 end
 ```
 
-## Usage
+## Quick Start
 
-Ospec separates API definition into two parts: **contracts** (input/output schemas) and **routing** (method/path). This separation helps to shape and define the API, which will be later used to generate routes and OpenAPI docs.
-
-### Defining Routes
-
-Routes define method and path using `scope` and `route`:
-
-```elixir
-defmodule MyApp.APISpec do
-  import Ospec.API
-
-  def api_spec do
-    new()
-    |> scope("/api", fn router ->
-      router
-      |> scope("/users", fn router ->
-        router
-        |> route(:get, "/", list_users())
-        |> route(:get, "/:id", find_user())
-        |> route(:post, "/", create_user())
-      end)
-    end)
-  end
-end
-```
-
-### Defining Contracts
-
-Contracts define input, output, and controller:
-
-```elixir
-defmodule MyApp.APISpec do
-
-  # ...contracts
-
-  @user Zoi.map(%{
-    id: Zoi.integer(),
-    name: Zoi.string(),
-    email: Zoi.string()
-  })
-
-  def list_users do
-    Ospec.new()
-    |> Ospec.input(
-      query: Zoi.map(%{
-        page: Zoi.integer() |> Zoi.default(1),
-        page_size: Zoi.integer() |> Zoi.default(20)
-      })
-    )
-    |> Ospec.output(Zoi.array(@user))
-    |> Ospec.controller(MyAppWeb.UsersController, :index)
-  end
-
-  def find_user do
-    Ospec.new()
-    |> Ospec.input(params: Zoi.map(%{id: Zoi.integer()}))
-    |> Ospec.output(@user)
-    |> Ospec.controller(MyAppWeb.UsersController, :show)
-  end
-
-  def create_user do
-    Ospec.new()
-    |> Ospec.input(body: Zoi.map(%{name: Zoi.string(), email: Zoi.string()}))
-    |> Ospec.output(@user)
-    |> Ospec.controller(MyAppWeb.UsersController, :create)
-  end
-end
-```
-
-### Phoenix Integration
-
-Generate Phoenix routes from your API specification:
-
-```elixir
-defmodule MyAppWeb.Router do
-  use MyAppWeb, :router
-  import Ospec.Phoenix
-
-  pipeline :api do
-    plug :accepts, ["json"]
-  end
-
-  scope "/api" do
-    pipe_through :api
-    ospec_routes(MyApp.APISpec.api_spec(), prefix: "/api")
-  end
-end
-```
-
-### Controllers
-
-Controllers receive validated input via `Ospec.Conn.get_input/1`:
+Define specs directly in your controller:
 
 ```elixir
 defmodule MyAppWeb.UsersController do
   use MyAppWeb, :controller
+  use Ospec.Controller
+
+  @user Zoi.map(%{id: Zoi.integer(), name: Zoi.string(), email: Zoi.string()},
+    metadata: [ref: :User]
+  )
+
+  ospec :index,
+    Ospec.new()
+    |> Ospec.route(:get, "/api/users")
+    |> Ospec.tags(["users"])
+    |> Ospec.summary("List users")
+    |> Ospec.input(query: Zoi.map(%{page: Zoi.integer() |> Zoi.default(1)}))
+    |> Ospec.output(Zoi.array(@user))
+
+  ospec :show,
+    Ospec.new()
+    |> Ospec.route(:get, "/api/users/:id")
+    |> Ospec.tags(["users"])
+    |> Ospec.summary("Get user")
+    |> Ospec.input(params: Zoi.map(%{id: Zoi.integer()}))
+    |> Ospec.output(@user)
+    |> Ospec.responses(%{404 => Ospec.Schemas.error()})
 
   def index(conn, _params) do
     input = Ospec.Conn.get_input(conn)
     users = MyApp.Accounts.list_users(input.query)
-    Ospec.HTTP.ok(users)
+    Ospec.Conn.json(conn, users)
   end
 
   def show(conn, _params) do
     input = Ospec.Conn.get_input(conn)
     case MyApp.Accounts.get_user(input.params.id) do
-      nil -> Ospec.HTTP.not_found()
-      user -> Ospec.HTTP.ok(user)
+      nil -> conn |> put_status(404) |> json(%{error: "not found"})
+      user -> Ospec.Conn.json(conn, user)
     end
-  end
-
-  def create(conn, _params) do
-    input = Ospec.Conn.get_input(conn)
-    case MyApp.Accounts.create_user(input.body) do
-      {:ok, user} -> Ospec.HTTP.created(user)
-      {:error, changeset} -> Ospec.HTTP.bad_request(changeset)
-    end
-  end
-end
-```
-
-Response helpers available in `Ospec.HTTP`:
-
-```elixir
-Ospec.HTTP.ok(data)           # 200 OK
-Ospec.HTTP.created(data)      # 201 Created
-Ospec.HTTP.no_content()       # 204 No Content
-Ospec.HTTP.bad_request(data)  # 400 Bad Request
-Ospec.HTTP.unauthorized()     # 401 Unauthorized
-Ospec.HTTP.forbidden()        # 403 Forbidden
-Ospec.HTTP.not_found()        # 404 Not Found
-```
-
-### Middleware
-
-Add middleware to scopes:
-
-```elixir
-def api_spec do
-  new()
-  |> scope("/api", fn router ->
-    router
-    |> middleware(&MyApp.Middleware.authenticate/2)
-    |> scope("/users", fn router ->
-      router
-      |> route(:get, "/", list_users())
-      |> route(:post, "/", create_user())
-    end)
-  end)
-end
-```
-
-Middleware receives `conn` and `next`:
-
-```elixir
-def authenticate(conn, next) do
-  case get_user_from_token(conn) do
-    {:ok, user} ->
-      conn = assign(conn, :current_user, user)
-      next.(conn)
-    :error ->
-      conn |> send_resp(401, "Unauthorized") |> halt()
   end
 end
 ```
 
 ## OpenAPI Generation
 
-Generate an OpenAPI specification from your API:
+Create an ApiSpec module:
+
+```elixir
+defmodule MyAppWeb.ApiSpec do
+  use Ospec.ApiSpec
+
+  @impl true
+  def spec do
+    %{
+      openapi: "3.0.3",
+      info: %{title: "My API", version: "1.0.0"},
+      paths: Ospec.OpenAPI.paths(:my_app),
+      components: Ospec.OpenAPI.components(:my_app)  # auto-discovers schemas
+    }
+  end
+end
+```
+
+Generate the OpenAPI spec:
 
 ```
-mix ospec.openapi --output openapi.json
+mix ospec.openapi MyAppWeb.ApiSpec --output openapi.json
+```
+
+## Swagger UI
+
+Add to your router:
+
+```elixir
+get "/api/openapi", Ospec.OpenAPI.Spec, api_spec: MyAppWeb.ApiSpec
+forward "/docs", Ospec.OpenAPI.Swagger, path: "/api/openapi"
+```
+
+Visit `/docs` to see the Swagger UI.
+
+## Input Validation
+
+The `Ospec.Plug` automatically validates incoming requests:
+
+- Path parameters via `params:`
+- Query parameters via `query:`
+- Request body via `body:`
+
+Access validated input in your controller:
+
+```elixir
+def show(conn, _params) do
+  input = Ospec.Conn.get_input(conn)
+  # input.params, input.query, input.body are validated
+end
+```
+
+## Output Validation
+
+Use `Ospec.Conn.json/3` to validate responses:
+
+```elixir
+Ospec.Conn.json(conn, user)           # validates against output schema
+Ospec.Conn.json(conn, user, 201)      # with status code
+```
+
+If validation fails, logs the error and returns 500.
+
+## Schemas with `ref`
+
+Add `metadata: [ref: :Name]` to schemas that should become OpenAPI components:
+
+```elixir
+@user Zoi.map(%{id: Zoi.integer(), name: Zoi.string()}, metadata: [ref: :User])
+```
+
+Schemas with `ref` are auto-discovered and become `$ref` in the OpenAPI spec.
+
+## Built-in Schemas
+
+Ospec provides common schemas:
+
+```elixir
+Ospec.Schemas.error()  # Standard error response with ref: :Error
+```
+
+## Reusable Schemas
+
+For schemas shared across multiple controllers, extract to a module:
+
+```elixir
+defmodule MyApp.Schemas do
+  def user do
+    Zoi.map(%{id: Zoi.integer(), name: Zoi.string()}, metadata: [ref: :User])
+  end
+
+  def post do
+    Zoi.map(%{id: Zoi.integer(), title: Zoi.string(), author: user()},
+      metadata: [ref: :Post]
+    )
+  end
+end
+```
+
+Then use in controllers:
+
+```elixir
+ospec :index,
+  Ospec.new()
+  |> Ospec.output(Zoi.array(MyApp.Schemas.user()))
 ```
 
 ## License
